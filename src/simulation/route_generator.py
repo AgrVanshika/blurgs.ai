@@ -19,10 +19,35 @@ class RouteGenerator:
         end_port = selected_ports.iloc[1].to_dict()
         return start_port, end_port
 
+    def validate_port(self, port: Dict) -> bool:
+        """Validate port coordinates."""
+        if not isinstance(port, dict):
+            return False
+            
+        required_fields = ['latitude', 'longitude']
+        if not all(field in port for field in required_fields):
+            return False
+            
+        try:
+            lat = float(port['latitude'])
+            lon = float(port['longitude'])
+            return -90 <= lat <= 90 and -180 <= lon <= 180
+        except (ValueError, TypeError):
+            return False
+
     def generate_route(self, start_port: Dict = None, end_port: Dict = None) -> List[Tuple[float, float]]:
         """Generate a maritime route between two ports using searoute-py."""
         if start_port is None or end_port is None:
             start_port, end_port = self.select_random_ports()
+
+        # Validate ports
+        if not self.validate_port(start_port) or not self.validate_port(end_port):
+            # Fallback to linear route with valid coordinates
+            start_lat = max(-90, min(90, float(start_port.get('latitude', 0))))
+            start_lon = max(-180, min(180, float(start_port.get('longitude', 0))))
+            end_lat = max(-90, min(90, float(end_port.get('latitude', 0))))
+            end_lon = max(-180, min(180, float(end_port.get('longitude', 0))))
+            return self._linear_route((start_lat, start_lon), (end_lat, end_lon))
 
         try:
             # Generate route using searoute-py
@@ -45,8 +70,14 @@ class RouteGenerator:
     def _linear_route(self, start: Tuple[float, float], end: Tuple[float, float], 
                      num_points: int = 50) -> List[Tuple[float, float]]:
         """Generate a simple linear route between two points (fallback method)."""
-        lats = np.linspace(start[0], end[0], num_points)
-        lons = np.linspace(start[1], end[1], num_points)
+        # Ensure coordinates are within valid ranges
+        start_lat = max(-90, min(90, start[0]))
+        start_lon = max(-180, min(180, start[1]))
+        end_lat = max(-90, min(90, end[0]))
+        end_lon = max(-180, min(180, end[1]))
+        
+        lats = np.linspace(start_lat, end_lat, num_points)
+        lons = np.linspace(start_lon, end_lon, num_points)
         return list(zip(lats, lons))
 
     def calculate_distance(self, route: List[Tuple[float, float]]) -> float:

@@ -10,4 +10,5 @@ fastapi==0.103.1
 uvicorn==0.23.2
 shapely==2.0.1
 numpy==1.24.3
-pyproj==3.6.1 
+pyproj==3.6.1
+prometheus-client==0.17.1 

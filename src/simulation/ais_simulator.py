@@ -8,6 +8,14 @@ from src.simulation.route_generator import RouteGenerator
 class AISSimulator:
     def __init__(self, mmsi: str, speed_knots: float = 15.0):
         """Initialize an AIS simulator for a vessel."""
+        # Validate MMSI
+        if not str(mmsi).isdigit() or len(str(mmsi)) != 9:
+            raise ValueError(f"Invalid MMSI: {mmsi}. MMSI must be 9 digits.")
+        
+        # Validate speed
+        if speed_knots <= 0:
+            raise ValueError(f"Invalid speed: {speed_knots}. Speed must be positive.")
+            
         self.mmsi = mmsi
         self.speed_knots = speed_knots  # Average vessel speed in knots
         self.route_generator = RouteGenerator()
@@ -28,7 +36,7 @@ class AISSimulator:
     def calculate_position(self, elapsed_minutes: float) -> Tuple[float, float]:
         """Calculate vessel position after elapsed time."""
         if not self.current_route:
-            raise ValueError("No active route. Call start_new_voyage() first.")
+            raise ValueError("No active voyage. Call start_new_voyage() first.")
 
         # Calculate progress along route based on speed and time
         distance_covered = (self.speed_knots * elapsed_minutes / 60)  # Distance in nautical miles
@@ -79,7 +87,7 @@ class AISSimulator:
         msg = {
             "type": 1,  # Position Report Class A
             "repeat": 0,
-            "mmsi": int(self.mmsi),
+            "mmsi": str(self.mmsi),  # Keep MMSI as string
             "status": 0,  # Under way using engine
             "turn": 0,  # Rate of turn
             "speed": int(self.speed_knots * 10),  # Speed in 1/10 knot steps

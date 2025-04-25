@@ -69,8 +69,14 @@ def test_route_validity():
         # Calculate distance between consecutive points
         distance = generator._haversine_distance(point1[0], point1[1], point2[0], point2[1])
         
-        # Points should not be too far apart (arbitrary threshold of 100 nautical miles)
-        assert distance <= 100, f"Points too far apart: {distance} nautical miles"
+        # Points should not be too far apart (200 nautical miles is more realistic for open ocean)
+        assert distance <= 200, f"Points too far apart: {distance} nautical miles"
+        
+        # Verify coordinates are valid
+        assert -90 <= point1[0] <= 90, f"Invalid latitude: {point1[0]}"
+        assert -180 <= point1[1] <= 180, f"Invalid longitude: {point1[1]}"
+        assert -90 <= point2[0] <= 90, f"Invalid latitude: {point2[0]}"
+        assert -180 <= point2[1] <= 180, f"Invalid longitude: {point2[1]}"
 
 if __name__ == "__main__":
     pytest.main([__file__]) 

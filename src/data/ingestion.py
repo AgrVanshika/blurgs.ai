@@ -76,7 +76,11 @@ class AISIngestionService:
         """Store AIS message in database."""
         try:
             # Parse timestamp
-            timestamp = datetime.fromisoformat(message['timestamp'])
+            try:
+                timestamp = datetime.fromisoformat(message['timestamp'])
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid timestamp: {message['timestamp']}")
+                return
             
             # Decode AIS payload
             decoded = message['decoded']
@@ -137,9 +141,14 @@ class AISIngestionService:
             
         start_time = time.time()
         with SessionLocal() as session:
-            for message in self.message_buffer:
-                self.store_message(session, message)
-            session.commit()
+            try:
+                for message in self.message_buffer:
+                    self.store_message(session, message)
+                session.commit()
+            except Exception as e:
+                logger.error(f"Error processing batch: {e}")
+                session.rollback()
+                raise
         
         processing_time = time.time() - start_time
         message_processing_time.observe(processing_time)

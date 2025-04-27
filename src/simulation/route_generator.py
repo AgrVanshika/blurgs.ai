@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from searoute import searoute
+from geopy.distance import geodesic
 from typing import List, Tuple, Dict
 import random
 from pathlib import Path
@@ -36,7 +36,7 @@ class RouteGenerator:
             return False
 
     def generate_route(self, start_port: Dict = None, end_port: Dict = None) -> List[Tuple[float, float]]:
-        """Generate a maritime route between two ports using searoute-py."""
+        """Generate a maritime route between two ports using geopy."""
         if start_port is None or end_port is None:
             start_port, end_port = self.select_random_ports()
 
@@ -49,27 +49,19 @@ class RouteGenerator:
             end_lon = max(-180, min(180, float(end_port.get('longitude', 0))))
             return self._linear_route((start_lat, start_lon), (end_lat, end_lon))
 
-        try:
-            # Generate route using searoute-py
-            route = searoute.searoute(
-                (start_port['longitude'], start_port['latitude']),
-                (end_port['longitude'], end_port['latitude'])
-            )
-            
-            # Convert route to list of (lat, lon) tuples
-            waypoints = [(point[1], point[0]) for point in route]
-            return waypoints
-        except Exception as e:
-            print(f"Error generating route: {e}")
-            # Fallback to simple linear interpolation
-            return self._linear_route(
-                (start_port['latitude'], start_port['longitude']),
-                (end_port['latitude'], end_port['longitude'])
-            )
+        # Use geopy to calculate the route
+        start_point = (start_port['latitude'], start_port['longitude'])
+        end_point = (end_port['latitude'], end_port['longitude'])
+        
+        # Calculate intermediate points
+        distance = geodesic(start_point, end_point).nautical
+        num_points = max(10, int(distance / 10))  # One point every 10 nautical miles, minimum 10 points
+        
+        return self._linear_route(start_point, end_point, num_points)
 
     def _linear_route(self, start: Tuple[float, float], end: Tuple[float, float], 
                      num_points: int = 50) -> List[Tuple[float, float]]:
-        """Generate a simple linear route between two points (fallback method)."""
+        """Generate a simple linear route between two points."""
         # Ensure coordinates are within valid ranges
         start_lat = max(-90, min(90, start[0]))
         start_lon = max(-180, min(180, start[1]))
@@ -84,23 +76,10 @@ class RouteGenerator:
         """Calculate the total distance of the route in nautical miles."""
         total_distance = 0
         for i in range(len(route) - 1):
-            lat1, lon1 = route[i]
-            lat2, lon2 = route[i + 1]
-            total_distance += self._haversine_distance(lat1, lon1, lat2, lon2)
+            point1 = route[i]
+            point2 = route[i + 1]
+            total_distance += geodesic(point1, point2).nautical
         return total_distance
-
-    def _haversine_distance(self, lat1: float, lon1: float, 
-                          lat2: float, lon2: float) -> float:
-        """Calculate the great circle distance between two points in nautical miles."""
-        R = 3440.065  # Earth's radius in nautical miles
-        
-        lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        
-        a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
-        c = 2 * np.arcsin(np.sqrt(a))
-        return R * c
 
 if __name__ == "__main__":
     # Test the route generator

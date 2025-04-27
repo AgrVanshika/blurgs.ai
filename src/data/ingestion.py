@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from src.data.models import SessionLocal, AISMessage, Vessel
 from typing import Dict, Optional, List
 import logging
-from prometheus_client import Counter, Histogram, start_http_server
 import time
 
 # Configure logging
@@ -17,15 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Prometheus metrics
-messages_received = Counter('messages_received_total', 'Total messages received')
-messages_processed = Counter('messages_processed_total', 'Total messages processed')
-invalid_messages = Counter('invalid_messages_total', 'Total invalid messages')
-duplicate_messages = Counter('duplicate_messages_total', 'Total duplicate messages')
-message_processing_time = Histogram('message_processing_seconds', 'Time spent processing messages')
-
 class AISIngestionService:
-    def __init__(self, websocket_url: str = "ws://localhost:8765", batch_size: int = 100):
+    def __init__(self, websocket_url: str = "ws://localhost:8765", batch_size: int = 10):
         """Initialize the AIS ingestion service."""
         self.websocket_url = websocket_url
         self.batch_size = batch_size
@@ -38,9 +30,17 @@ class AISIngestionService:
         }
         self.last_positions: Dict[str, Dict] = {}
 
-    def validate_message(self, decoded_data: Dict) -> bool:
+    def validate_message(self, data: Dict) -> bool:
         """Validate AIS message data."""
+        # Check if the decoded data contains the required fields
+        if 'decoded' not in data:
+            return False
+
+        decoded_data = data['decoded']
         required_fields = ['latitude', 'longitude', 'mmsi']
+        if not all(field in data for field in ['mmsi', 'timestamp', 'payload']):
+            return False
+            
         if not all(field in decoded_data for field in required_fields):
             return False
         
@@ -53,7 +53,7 @@ class AISIngestionService:
             return False
             
         # Validate MMSI format (9 digits)
-        if not str(decoded_data['mmsi']).isdigit() or len(str(decoded_data['mmsi'])) != 9:
+        if not str(data['mmsi']).isdigit() or len(str(data['mmsi'])) != 9:
             return False
             
         return True
@@ -72,7 +72,7 @@ class AISIngestionService:
             
         return False
 
-    def store_message(self, session: Session, message: Dict):
+    def store_message(self, session: Session, message: Dict, existing_vessels: Dict[str, 'Vessel'] = None):
         """Store AIS message in database."""
         try:
             # Parse timestamp
@@ -82,14 +82,13 @@ class AISIngestionService:
                 logger.warning(f"Invalid timestamp: {message['timestamp']}")
                 return
             
-            # Decode AIS payload
+            # Get decoded data
             decoded = message['decoded']
             
             # Validate message
-            if not self.validate_message(decoded):
-                logger.warning(f"Invalid message data: {decoded}")
+            if not self.validate_message(message):
+                logger.warning(f"Invalid message data: {message}")
                 self.stats['invalid_messages'] += 1
-                invalid_messages.inc()
                 return
                 
             # Check for duplicates
@@ -97,7 +96,6 @@ class AISIngestionService:
             if self.is_duplicate(message['mmsi'], timestamp, position):
                 logger.info(f"Duplicate message detected for MMSI {message['mmsi']}")
                 self.stats['duplicate_messages'] += 1
-                duplicate_messages.inc()
                 return
                 
             # Update last position
@@ -119,15 +117,17 @@ class AISIngestionService:
                 message_type=1  # Position Report Class A
             )
             
-            # Create or update vessel record
-            vessel = session.query(Vessel).filter_by(mmsi=message['mmsi']).first()
-            if not vessel:
-                vessel = Vessel(mmsi=message['mmsi'])
-                session.add(vessel)
+            # Use existing vessel if provided, otherwise query
+            if existing_vessels and message['mmsi'] in existing_vessels:
+                vessel = existing_vessels[message['mmsi']]
+            else:
+                vessel = session.query(Vessel).filter_by(mmsi=message['mmsi']).first()
+                if not vessel:
+                    vessel = Vessel(mmsi=message['mmsi'])
+                    session.add(vessel)
             
             session.add(ais_message)
             self.stats['messages_processed'] += 1
-            messages_processed.inc()
             
         except Exception as e:
             logger.error(f"Error storing message: {e}")
@@ -142,23 +142,38 @@ class AISIngestionService:
         start_time = time.time()
         with SessionLocal() as session:
             try:
+                # First, get all unique MMSIs in this batch
+                unique_mmsis = set(msg['mmsi'] for msg in self.message_buffer)
+                
+                # Get existing vessels
+                existing_vessels = {
+                    v.mmsi: v for v in session.query(Vessel).filter(Vessel.mmsi.in_(unique_mmsis))
+                }
+                
+                # Create missing vessels
+                for mmsi in unique_mmsis:
+                    if mmsi not in existing_vessels:
+                        vessel = Vessel(mmsi=mmsi)
+                        session.add(vessel)
+                        existing_vessels[mmsi] = vessel
+                
+                # Process messages with existing vessels
                 for message in self.message_buffer:
-                    self.store_message(session, message)
+                    self.store_message(session, message, existing_vessels)
+                    
                 session.commit()
+                logger.info(f"Processed batch of {len(self.message_buffer)} messages")
             except Exception as e:
                 logger.error(f"Error processing batch: {e}")
                 session.rollback()
                 raise
         
         processing_time = time.time() - start_time
-        message_processing_time.observe(processing_time)
+        logger.debug(f"Batch processing time: {processing_time:.4f} seconds")
         self.message_buffer.clear()
 
     async def process_messages(self):
         """Process incoming AIS messages from WebSocket."""
-        # Start Prometheus metrics server
-        start_http_server(8000)
-        
         while True:
             try:
                 async with websockets.connect(self.websocket_url) as websocket:
@@ -168,7 +183,6 @@ class AISIngestionService:
                         try:
                             data = json.loads(message)
                             self.stats['messages_received'] += 1
-                            messages_received.inc()
                             
                             # Add message to buffer
                             self.message_buffer.append(data)
@@ -178,7 +192,7 @@ class AISIngestionService:
                                 await self.process_batch()
                                 
                             # Log statistics periodically
-                            if self.stats['messages_received'] % 100 == 0:
+                            if self.stats['messages_received'] % 50 == 0:
                                 logger.info(f"Statistics: {json.dumps(self.stats)}")
                                 
                         except json.JSONDecodeError:
@@ -195,4 +209,4 @@ class AISIngestionService:
 
 if __name__ == "__main__":
     service = AISIngestionService()
-    asyncio.run(service.process_messages()) 
+    asyncio.run(service.process_messages())

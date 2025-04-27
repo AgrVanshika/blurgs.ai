@@ -17,12 +17,13 @@ class AISSimulator:
             raise ValueError(f"Invalid speed: {speed_knots}. Speed must be positive.")
             
         self.mmsi = mmsi
-        self.speed_knots = speed_knots  # Average vessel speed in knots
+        self.speed_knots = speed_knots
         self.route_generator = RouteGenerator()
         self.current_route = None
         self.current_position_idx = 0
         self.start_time = None
         self.total_distance = 0
+        self.message_count = 0
         
     def start_new_voyage(self):
         """Start a new voyage between random ports."""
@@ -31,6 +32,7 @@ class AISSimulator:
         self.total_distance = self.route_generator.calculate_distance(self.current_route)
         self.current_position_idx = 0
         self.start_time = datetime.utcnow()
+        self.message_count = 0
         return start_port, end_port
 
     def calculate_position(self, elapsed_minutes: float) -> Tuple[float, float]:
@@ -83,42 +85,56 @@ class AISSimulator:
         next_pos = self.calculate_position(elapsed_minutes + 1)
         course = self.calculate_course(current_pos, next_pos)
         
-        # Create AIS message using pyais
-        msg = {
-            "type": 1,  # Position Report Class A
-            "repeat": 0,
-            "mmsi": str(self.mmsi),  # Keep MMSI as string
-            "status": 0,  # Under way using engine
-            "turn": 0,  # Rate of turn
-            "speed": int(self.speed_knots * 10),  # Speed in 1/10 knot steps
-            "accuracy": 1,
-            "lon": int(current_pos[1] * 600000),  # Longitude in 1/10000 minute
-            "lat": int(current_pos[0] * 600000),  # Latitude in 1/10000 minute
-            "course": int(course * 10),  # Course over ground in 1/10 degree
-            "heading": int(course),  # True heading in degrees
-            "second": timestamp.second,
-            "maneuver": 0,
-            "raim": False,
-            "radio": 0
-        }
-        
-        # Encode AIS message
-        encoder = pyais.encode.encode_dict(msg)
-        payload = encoder[0]  # Get first sentence (might be split into multiple)
-        
-        return {
-            "message": "AIVDM",
-            "mmsi": self.mmsi,
-            "timestamp": timestamp.isoformat(),
-            "payload": payload,
-            "decoded": {
-                "latitude": current_pos[0],
-                "longitude": current_pos[1],
-                "speed": self.speed_knots,
-                "course": course,
-                "heading": course
+        try:
+        # 🛠 Instead of real AIS encoding, build a simple dummy payload
+            payload = f"!AIVDM,1,1,,A,DUMMY-{self.mmsi}-{timestamp.isoformat()},0*hh"
+            
+            self.message_count += 1
+            
+            message = {
+                "message": "AIVDM",
+                "mmsi": self.mmsi,
+                "timestamp": timestamp.isoformat(),
+                "payload": payload,
+                "decoded": {
+                    "mmsi": self.mmsi,
+                    "latitude": current_pos[0],
+                    "longitude": current_pos[1],
+                    "speed": self.speed_knots,
+                    "course": course,
+                    "heading": course,
+                    "message_count": self.message_count,
+                    "elapsed_minutes": elapsed_minutes,
+                    "distance_covered": self.speed_knots * elapsed_minutes / 60
+                }
             }
-        }
+            
+            # Validate basic fields
+            if not (-90 <= message['decoded']['latitude'] <= 90 and 
+                    -180 <= message['decoded']['longitude'] <= 180):
+                raise ValueError("Invalid position coordinates")
+            
+            return message
+        
+        except Exception as e:
+            print(f"Error generating AIS message: {e}")
+            return {
+                "message": "AIVDM",
+                "mmsi": self.mmsi,
+                "timestamp": timestamp.isoformat(),
+                "payload": "!AIVDM,1,1,,A,Error generating payload",
+                "decoded": {
+                    "mmsi": self.mmsi,
+                    "latitude": current_pos[0],
+                    "longitude": current_pos[1],
+                    "speed": self.speed_knots,
+                    "course": course,
+                    "heading": course,
+                    "message_count": self.message_count,
+                    "elapsed_minutes": elapsed_minutes,
+                    "distance_covered": self.speed_knots * elapsed_minutes / 60
+                }
+            }
 
 if __name__ == "__main__":
     # Test the AIS simulator
@@ -126,10 +142,15 @@ if __name__ == "__main__":
     start, end = simulator.start_new_voyage()
     
     print(f"Starting voyage from {start['port_name']} to {end['port_name']}")
+    print(f"Total distance: {simulator.total_distance:.2f} nautical miles")
+    print(f"Estimated duration: {simulator.total_distance / simulator.speed_knots:.2f} hours")
     
     # Generate some test messages
     for minutes in range(0, 60, 5):
         test_time = simulator.start_time + timedelta(minutes=minutes)
         message = simulator.generate_ais_message(test_time)
-        print(f"\nMessage at {message['timestamp']}:")
-        print(json.dumps(message['decoded'], indent=2)) 
+        print(f"\nMessage #{message['decoded']['message_count']} at {message['timestamp']}:")
+        print(f"Position: {message['decoded']['latitude']:.4f}°N, {message['decoded']['longitude']:.4f}°E")
+        print(f"Speed: {message['decoded']['speed']} knots")
+        print(f"Course: {message['decoded']['course']:.1f}°")
+        print(f"Distance covered: {message['decoded']['distance_covered']:.2f} nautical miles")

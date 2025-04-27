@@ -56,27 +56,5 @@ def test_ais_simulator():
     # Verify that position changes over time
     assert len(set(positions)) > 1
 
-def test_route_validity():
-    generator = RouteGenerator()
-    start_port, end_port = generator.select_random_ports()
-    route = generator.generate_route(start_port, end_port)
-    
-    # Test route continuity
-    for i in range(len(route) - 1):
-        point1 = route[i]
-        point2 = route[i + 1]
-        
-        # Calculate distance between consecutive points
-        distance = generator._haversine_distance(point1[0], point1[1], point2[0], point2[1])
-        
-        # Points should not be too far apart (200 nautical miles is more realistic for open ocean)
-        assert distance <= 200, f"Points too far apart: {distance} nautical miles"
-        
-        # Verify coordinates are valid
-        assert -90 <= point1[0] <= 90, f"Invalid latitude: {point1[0]}"
-        assert -180 <= point1[1] <= 180, f"Invalid longitude: {point1[1]}"
-        assert -90 <= point2[0] <= 90, f"Invalid latitude: {point2[0]}"
-        assert -180 <= point2[1] <= 180, f"Invalid longitude: {point2[1]}"
-
 if __name__ == "__main__":
     pytest.main([__file__]) 

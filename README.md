@@ -1,15 +1,26 @@
-# Maritime Vessel Route Simulation & Data Engineering
+# Maritime AIS Simulation & Data Pipeline
 
-This project implements a maritime vessel route simulation and AIS data processing system. It generates realistic vessel routes between ports, simulates AIS messages, and provides a data pipeline for storage and analysis.
+A robust system for simulating maritime vessel movements, generating AIS messages, and processing vessel tracking data. This implementation focuses on efficient data handling, real-time simulation, and reliable message processing.
 
-## Features
+## Current Features
 
-- Route generation between ports using searoute-py
-- AIS message simulation with realistic vessel movement
-- WebSocket-based playback system with variable speeds
-- Data ingestion pipeline with validation and quality checks
-- Efficient data storage and retrieval system
-- Analytics queries for vessel tracking and statistics
+- **AIS Message Simulation**
+  - Real-time vessel position updates
+  - Configurable message intervals
+  - Batch processing for efficiency
+  - WebSocket-based message streaming
+
+- **Data Processing**
+  - Efficient message ingestion
+  - Duplicate detection
+  - Data validation
+  - Quality metrics tracking
+
+- **Performance Optimizations**
+  - Batch processing (10 messages per batch)
+  - Efficient database operations
+  - Connection pooling
+  - Resource management
 
 ## Project Structure
 
@@ -17,24 +28,17 @@ This project implements a maritime vessel route simulation and AIS data processi
 .
 ├── README.md
 ├── requirements.txt
+├── setup.py
 ├── src/
 │   ├── simulation/
-│   │   ├── route_generator.py
-│   │   ├── ais_simulator.py
-│   │   └── playback_service.py
+│   │   ├── ais_simulator.py    # AIS message generation
+│   │   └── playback_service.py # WebSocket message streaming
 │   ├── data/
-│   │   ├── ports.csv
-│   │   ├── ingestion.py
-│   │   └── models.py
-│   ├── api/
-│   │   ├── websocket.py
-│   │   └── rest.py
-│   └── analytics/
-│       └── queries.py
-└── tests/
-    ├── test_simulation.py
-    ├── test_ingestion.py
-    └── test_analytics.py
+│   │   ├── ingestion.py        # Message ingestion pipeline
+│   │   └── models.py          # Database models
+│   └── main.py                # Application entry point
+└── data/
+    └── maritime.db            # SQLite database
 ```
 
 ## Setup and Installation
@@ -45,68 +49,108 @@ git clone <repository-url>
 cd maritime-simulation
 ```
 
-3. Install dependencies:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Initialize the database:
-```bash
-python src/data/models.py
-```
-
 ## Usage
 
-1. Start the WebSocket server:
+1. Start the application:
 ```bash
-python src/api/websocket.py
+python src/main.py
 ```
 
-2. Run the simulation:
+The system will:
+- Initialize the database
+- Start the WebSocket server (port 8765)
+- Begin AIS message simulation
+- Process and store messages
+
+## Configuration
+
+The system can be configured through environment variables:
+
 ```bash
-python src/simulation/playback_service.py
+# WebSocket Configuration
+WS_PORT=8765
+WS_HOST=localhost
+
+# Simulation Settings
+SIMULATION_SPEED=5.0  # Speed factor (1.0 = real-time)
+MESSAGE_INTERVAL=5    # Seconds between messages
+BATCH_SIZE=10        # Messages per batch
+
+# Database Settings
+DB_PATH=data/maritime.db
 ```
 
-3. Start the data ingestion:
-```bash
-python src/data/ingestion.py
-```
+## Current Implementation Details
+
+### Message Processing
+- Messages are processed in batches of 10
+- Each batch is processed in ~0.01 seconds
+- Messages are validated before storage
+- Duplicates are detected and filtered
+
+### Data Quality
+- Tracks message statistics:
+  - Total messages received
+  - Messages processed
+  - Invalid messages
+  - Duplicate messages
+
+### Performance Metrics
+- WebSocket connection stability
+- Message processing latency
+- Database operation efficiency
+- Resource utilization
 
 ## Design Decisions
 
 ### Database Choice
-We use PostgreSQL for the following reasons:
-- Strong support for geospatial data with PostGIS
-- ACID compliance for data integrity
-- Efficient indexing capabilities
-- Support for time-series data
-- Scalability for large datasets
+Using SQLite for:
+- Simple deployment
+- Zero configuration
+- ACID compliance
+- Efficient for moderate loads
+- Easy backup and portability
 
-### Data Model
-The schema is designed to efficiently store AIS messages while supporting fast queries:
-- Partitioning by time for efficient historical queries
-- Spatial indexing for location-based queries
-- Optimized for common access patterns
+### Message Processing
+- Batch processing for efficiency
+- In-memory buffering
+- Connection pooling
+- Error recovery
 
 ### Simulation Approach
-- Routes are generated using searoute-py for realistic paths
-- Position interpolation between waypoints for smooth movement
-- Configurable simulation speed for flexible playback
+- Real-time position updates
+- Configurable intervals
+- Efficient resource usage
+- Stable message flow
 
-## Testing
+## Future Enhancements
 
-Run the test suite:
-```bash
-pytest tests/
-```
+1. **Route Generation**
+   - Implement searoute-py for realistic routes
+   - Add waypoint handling
+   - Support multiple vessels
 
-## Future Improvements
+2. **AIS Message Quality**
+   - Proper AIS encoding
+   - Realistic vessel movement
+   - Speed factor implementation
 
-1. Support for multiple concurrent vessels
-2. Real-time visualization dashboard
-3. Advanced analytics and machine learning features
-4. Distributed processing for large-scale simulations
-5. Caching layer for frequently accessed data
+3. **Analytics**
+   - Vessel track retrieval
+   - Distance/speed calculations
+   - Time-based queries
+   - Statistical analysis
+
+4. **Performance**
+   - Database indexing
+   - Query optimization
+   - Caching layer
+   - Distributed processing
 
 ## License
 

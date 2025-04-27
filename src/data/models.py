@@ -8,8 +8,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use SQLite for simplicity, can be changed to PostgreSQL in production
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./maritime.db")
+# Create data directory if it doesn't exist
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Use absolute path for database
+DB_PATH = os.path.join(DATA_DIR, "maritime.db")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 # Configure connection pooling
 engine = create_engine(
@@ -80,6 +85,13 @@ class Port(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     init_db()

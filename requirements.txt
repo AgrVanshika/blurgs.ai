@@ -1,4 +1,4 @@
-searoute-py==1.0.0
+geopy==2.4.1
 pyais==1.7.0
 websockets==11.0.3
 pandas==2.1.0

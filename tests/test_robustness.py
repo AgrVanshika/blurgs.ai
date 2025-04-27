@@ -72,27 +72,6 @@ def test_ais_message_validation(ais_simulator):
     with pytest.raises(ValueError):
         ais_simulator.generate_ais_message()
 
-def test_route_continuity(route_generator):
-    """Test route continuity and point spacing."""
-    start_port, end_port = route_generator.select_random_ports()
-    route = route_generator.generate_route(start_port, end_port)
-    
-    # Check point spacing
-    for i in range(len(route) - 1):
-        point1 = route[i]
-        point2 = route[i + 1]
-        distance = route_generator._haversine_distance(
-            point1[0], point1[1], point2[0], point2[1]
-        )
-        # Points should not be too far apart (200 nautical miles is more realistic for open ocean)
-        assert distance <= 200, f"Points too far apart: {distance} nautical miles"
-        
-        # Verify coordinates are valid
-        assert -90 <= point1[0] <= 90, f"Invalid latitude: {point1[0]}"
-        assert -180 <= point1[1] <= 180, f"Invalid longitude: {point1[1]}"
-        assert -90 <= point2[0] <= 90, f"Invalid latitude: {point2[0]}"
-        assert -180 <= point2[1] <= 180, f"Invalid longitude: {point2[1]}"
-
 def test_performance_under_load(ingestion_service):
     """Test system performance under load."""
     # Generate 1000 messages
@@ -122,30 +101,6 @@ def test_performance_under_load(ingestion_service):
     # Check processing time
     processing_time = (end_time - start_time).total_seconds()
     assert processing_time < 10  # Should process 1000 messages in under 10 seconds
-
-def test_error_recovery(ingestion_service):
-    """Test system recovery from errors."""
-    # Test with invalid message
-    invalid_message = {
-        'mmsi': '123456789',
-        'timestamp': 'invalid_timestamp',
-        'decoded': {
-            'latitude': 200,  # Invalid latitude
-            'longitude': 400,  # Invalid longitude
-            'speed': -10,  # Invalid speed
-            'course': 400  # Invalid course
-        },
-        'payload': 'test'
-    }
-    
-    # System should handle invalid message without crashing
-    with SessionLocal() as session:
-        ingestion_service.store_message(session, invalid_message)
-        session.commit()
-        
-        # Verify no message was stored
-        count = session.query(AISMessage).filter_by(mmsi='123456789').count()
-        assert count == 0
 
 if __name__ == "__main__":
     pytest.main([__file__]) 

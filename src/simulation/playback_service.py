@@ -132,6 +132,7 @@ class PlaybackService:
             
             # Add initial vessel
             self.add_vessel("123456789", 15.0)
+            self.add_vessel("123456790", 17.0)
             
             # Start message generation
             await self.generate_messages()

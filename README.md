@@ -131,7 +131,7 @@ Using SQLite for:
 ## Future Enhancements
 
 1. **Route Generation**
-   - Implement searoute-py for realistic routes
+   - Implement geopy for realistic routes
    - Add waypoint handling
    - Support multiple vessels
 
